@@ -32,6 +32,8 @@ class NavigationEngine(
     private var distanceOnEdge: Float = 0f
     // Calibrated flat-ground step length — stair edges use 50% of this
     private var calibratedStepLengthM: Float = 0.7f
+    // Floor tracking: fire "You are now on Floor X" only when floor number changes
+    private var lastAnnouncedFloor: Int = -999  // sentinel = unset
 
     var isNavigating: Boolean = false; private set
 
@@ -87,6 +89,8 @@ class NavigationEngine(
         hasAnnouncedNear  = false
         edgeStartTimeMs   = System.currentTimeMillis()
         isNavigating = true
+        // Initialise floor tracker from the start node
+        lastAnnouncedFloor = pathPlanner.getNode(route.first().fromNodeId)?.floor ?: 0
 
         val summary = pathPlanner.routeSummary(route)
         ttsGuide.announce("Route planned: $summary. Starting navigation.")
@@ -309,6 +313,8 @@ class NavigationEngine(
     }
 
     private fun advanceToNextEdge() {
+        val completedEdge = route.getOrNull(currentEdgeIndex)
+
         currentEdgeIndex++
         stepsOnEdge = 0
         distanceOnEdge = 0f
@@ -319,10 +325,30 @@ class NavigationEngine(
         // Adjust step length for stair vs flat terrain
         val nextEdge = route.getOrNull(currentEdgeIndex)
         pdrTracker.stepLengthM = if (nextEdge?.attributes?.hasStairs == true) {
-            // Stair steps are ~40-50% of normal stride length
             calibratedStepLengthM * 0.5f
         } else {
             calibratedStepLengthM
+        }
+
+        // Floor-change announcement: fires when we complete a stair edge and
+        // arrive at a node whose floor number differs from the last announced floor.
+        // Works for any number of stair sets (2, 3, 4+) between floors:
+        //   - Landing between stair sets = same floor as previous node → silent
+        //   - Top/bottom of full floor transition → announces new floor
+        if (completedEdge?.attributes?.hasStairs == true) {
+            val arrivedNodeId = completedEdge.toNodeId
+            val arrivedFloor  = pathPlanner.getNode(arrivedNodeId)?.floor
+            if (arrivedFloor != null && arrivedFloor != lastAnnouncedFloor) {
+                lastAnnouncedFloor = arrivedFloor
+                val floorLabel = when {
+                    arrivedFloor == 0 -> "ground floor"
+                    arrivedFloor > 0  -> "floor $arrivedFloor"
+                    else              -> "basement level ${-arrivedFloor}"
+                }
+                ttsGuide.announce("You are now on the $floorLabel.")
+                sendCaneVibe(VibrationPatterns.ARRIVED)  // one long buzz = floor reached
+                Log.i(TAG, "Floor change: now on floor $arrivedFloor")
+            }
         }
 
         confirmWithWiFi()
