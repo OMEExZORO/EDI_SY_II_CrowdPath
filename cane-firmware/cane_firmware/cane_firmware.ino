@@ -23,7 +23,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
-#include <ArduinoJson.h>
+// ArduinoJson removed — JSON handled with plain sprintf/strstr in ble_server.h
 
 // ── Module includes ──────────────────────────────────────────────────────────
 #include "config.h"

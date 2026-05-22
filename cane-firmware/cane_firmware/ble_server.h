@@ -18,7 +18,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
-#include <ArduinoJson.h>
+// No ArduinoJson needed — JSON built/parsed with plain C string ops
 #include "config.h"
 #include "vibration.h"
 
@@ -42,59 +42,73 @@ static float read_battery_v() {
     return v;
 }
 
-// ── Command parser ────────────────────────────────────────────────────────────
+// ── Command parser (no ArduinoJson — plain string search) ────────────────────
 static void parse_command(const uint8_t* data, size_t len) {
-    StaticJsonDocument<256> doc;
-    DeserializationError err = deserializeJson(doc, data, len);
-    if (err) {
-        Serial.printf("[BLE] JSON parse error: %s\n", err.c_str());
-        return;
-    }
+    // Copy into a null-terminated buffer for safe string operations
+    char buf[256];
+    size_t cpLen = (len < sizeof(buf) - 1) ? len : sizeof(buf) - 1;
+    memcpy(buf, data, cpLen);
+    buf[cpLen] = '\0';
 
-    const char* cmd = doc["cmd"];
-    if (!cmd) return;
+    Serial.printf("[BLE] Raw command: %s\n", buf);
 
-    Serial.printf("[BLE] Command received: %s\n", cmd);
+    // Helper: extract a string value for a given key, e.g. "cmd":"SET_VIBE"
+    // Returns pointer to value start (within buf) or nullptr if not found.
+    auto strVal = [&](const char* key) -> const char* {
+        char search[64];
+        snprintf(search, sizeof(search), "\"%s\":\"", key);
+        const char* p = strstr(buf, search);
+        if (!p) return nullptr;
+        return p + strlen(search);  // points to first char of value
+    };
 
-    if (strcmp(cmd, "SET_VIBE") == 0) {
-        int pattern = doc["pattern"] | 0;
-        if (pattern >= 1 && pattern <= 6) {
-            pendingPattern = pattern;
-            pendingCmd = true;
-        } else {
-            Serial.printf("[BLE] Invalid pattern: %d\n", pattern);
+    // Extract "cmd" value
+    const char* cmdStart = strVal("cmd");
+    if (!cmdStart) { Serial.println(F("[BLE] No 'cmd' key")); return; }
+
+    if (strncmp(cmdStart, "SET_VIBE", 8) == 0) {
+        // Extract "pattern":<number>
+        const char* pp = strstr(buf, "\"pattern\":");
+        if (pp) {
+            int pattern = 0;
+            sscanf(pp + 10, "%d", &pattern);   // skip past "pattern":
+            if (pattern >= 1 && pattern <= 6) {
+                pendingPattern = pattern;
+                pendingCmd = true;
+                Serial.printf("[BLE] SET_VIBE pattern=%d\n", pattern);
+            } else {
+                Serial.printf("[BLE] Invalid pattern: %d\n", pattern);
+            }
         }
 
-    } else if (strcmp(cmd, "NAV") == 0) {
-        // Map NAV commands to vibration patterns
-        const char* type = doc["type"];
-        const char* dir  = doc["dir"];
+    } else if (strncmp(cmdStart, "NAV", 3) == 0) {
+        const char* typeStart = strVal("type");
+        const char* dirStart  = strVal("dir");
 
-        if (!type) return;
+        if (!typeStart) return;
 
-        if (strcmp(type, "TURN") == 0) {
-            if (dir && strcmp(dir, "LEFT") == 0) {
-                pendingPattern = PATTERN_TURN_LEFT;
-            } else {
-                pendingPattern = PATTERN_TURN_RIGHT;
-            }
+        if (strncmp(typeStart, "TURN", 4) == 0) {
+            // dir present and starts with LEFT?
+            pendingPattern = (dirStart && strncmp(dirStart, "LEFT", 4) == 0)
+                             ? PATTERN_TURN_LEFT
+                             : PATTERN_TURN_RIGHT;
             pendingCmd = true;
 
-        } else if (strcmp(type, "STAIRS") == 0) {
+        } else if (strncmp(typeStart, "STAIRS", 6) == 0) {
             pendingPattern = PATTERN_STAIRS_AHEAD;
             pendingCmd = true;
 
-        } else if (strcmp(type, "ARRIVED") == 0) {
+        } else if (strncmp(typeStart, "ARRIVED", 7) == 0) {
             pendingPattern = PATTERN_ARRIVED;
             pendingCmd = true;
 
-        } else if (strcmp(type, "STOP") == 0) {
+        } else if (strncmp(typeStart, "STOP", 4) == 0) {
             pendingPattern = PATTERN_STOP_OBSTACLE;
             pendingCmd = true;
         }
 
     } else {
-        Serial.printf("[BLE] Unhandled cmd: %s\n", cmd);
+        Serial.printf("[BLE] Unhandled cmd: %.16s\n", cmdStart);
     }
 }
 
@@ -160,13 +174,11 @@ void ble_send_status(int ultraCm) {
 
     float battV = read_battery_v();
 
-    StaticJsonDocument<128> doc;
-    doc["cmd"]        = "STATUS";
-    doc["battery_v"]  = battV;
-    doc["ultra_cm"]   = ultraCm;
-
+    // Build JSON with sprintf — no library needed
     char buf[128];
-    size_t len = serializeJson(doc, buf, sizeof(buf));
+    int len = snprintf(buf, sizeof(buf),
+        "{\"cmd\":\"STATUS\",\"battery_v\":%.2f,\"ultra_cm\":%d}",
+        battV, ultraCm);
 
     pStatusChar->setValue((uint8_t*)buf, len);
     pStatusChar->notify();
