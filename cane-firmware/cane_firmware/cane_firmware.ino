@@ -114,8 +114,8 @@ void loop() {
             }
         } else if (cmd == "ip") {
             Serial.printf("[INFO] AP IP: %s  Clients: %d\n",
-                WiFi.softAPIP().toString().c_str(),
-                WiFi.softAPStationNum());
+                    WiFi.softAPIP().toString().c_str(),
+                    WiFi.softAPgetStationNum());
         }
     }
 
