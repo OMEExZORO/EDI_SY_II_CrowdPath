@@ -30,6 +30,8 @@ class NavigationEngine(
     private var currentEdgeIndex: Int = 0
     private var stepsOnEdge: Int = 0
     private var distanceOnEdge: Float = 0f
+    // Calibrated flat-ground step length — stair edges use 50% of this
+    private var calibratedStepLengthM: Float = 0.7f
 
     var isNavigating: Boolean = false; private set
 
@@ -74,7 +76,8 @@ class NavigationEngine(
         val prefs        = context.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
         val stepLength   = prefs.getFloat(KEY_STEP_LENGTH, 0.7f)
         val accessOnly   = prefs.getBoolean(KEY_ACCESSIBLE_ONLY, false)
-        pdrTracker.stepLengthM = stepLength
+        calibratedStepLengthM   = stepLength
+        pdrTracker.stepLengthM  = stepLength   // flat ground default
         pathPlanner.loadMap(pathPlanner.currentMap ?: return null, accessOnly)
 
         currentEdgeIndex = 0
@@ -247,14 +250,17 @@ class NavigationEngine(
             ttsGuide.queue("${remainingOnEdge.toInt()} meters remaining")
         }
 
-        // Early warning: approaching the turn
-        if (!hasAnnouncedEarly && remainingOnEdge in near..early) {
+        val onStairs = currentEdge.attributes.hasStairs
+
+        // Early warning: approaching the turn — skip on stair edges
+        // (heading is unreliable on stairs; the stair type is already announced)
+        if (!hasAnnouncedEarly && remainingOnEdge in near..early && !onStairs) {
             hasAnnouncedEarly = true
             prepareNextInstruction(remainingOnEdge)
         }
 
-        // Immediate instruction: at the turn point
-        if (!hasAnnouncedNear && remainingOnEdge in 0f..near) {
+        // Immediate instruction: at the turn point — skip on stair edges
+        if (!hasAnnouncedNear && remainingOnEdge in 0f..near && !onStairs) {
             hasAnnouncedNear = true
             fireImmediateInstruction()
         }
@@ -309,6 +315,15 @@ class NavigationEngine(
         hasAnnouncedEarly = false
         hasAnnouncedNear  = false
         edgeStartTimeMs   = System.currentTimeMillis()
+
+        // Adjust step length for stair vs flat terrain
+        val nextEdge = route.getOrNull(currentEdgeIndex)
+        pdrTracker.stepLengthM = if (nextEdge?.attributes?.hasStairs == true) {
+            // Stair steps are ~40-50% of normal stride length
+            calibratedStepLengthM * 0.5f
+        } else {
+            calibratedStepLengthM
+        }
 
         confirmWithWiFi()
 

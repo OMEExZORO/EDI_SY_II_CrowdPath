@@ -64,13 +64,17 @@ class PathPlanner {
             if (!accessibleOnly || edge.attributes.isAccessible) {
                 forwardEdges.getOrPut(edge.fromNodeId) { mutableListOf() }.add(edge)
                 reverseEdges.getOrPut(edge.toNodeId) { mutableListOf() }.add(edge)
-                // Undirected graph: add reverse direction
-                forwardEdges.getOrPut(edge.toNodeId) { mutableListOf() }.add(
-                    edge.copy(fromNodeId = edge.toNodeId, toNodeId = edge.fromNodeId)
+                // Undirected graph: add reverse direction with inverted turn direction
+                // so "turn right" on A→B becomes "turn left" on B→A.
+                val reverseEdge = edge.copy(
+                    fromNodeId = edge.toNodeId,
+                    toNodeId = edge.fromNodeId,
+                    heading = (edge.heading + 180f) % 360f,
+                    isReversed = true,
+                    explicitTurnDirection = edge.explicitTurnDirection?.inverted()
                 )
-                reverseEdges.getOrPut(edge.fromNodeId) { mutableListOf() }.add(
-                    edge.copy(fromNodeId = edge.toNodeId, toNodeId = edge.fromNodeId)
-                )
+                forwardEdges.getOrPut(edge.toNodeId) { mutableListOf() }.add(reverseEdge)
+                reverseEdges.getOrPut(edge.fromNodeId) { mutableListOf() }.add(reverseEdge)
             }
         }
         Log.i(TAG, "Map loaded: ${nodes.size} nodes, ${map.edges.size} edges")

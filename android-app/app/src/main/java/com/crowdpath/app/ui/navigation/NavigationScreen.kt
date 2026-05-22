@@ -124,6 +124,7 @@ fun NavigationScreen() {
     val repo           = remember { MapRepository(db) }
 
     var destination       by remember { mutableStateOf("") }
+    var startLocation     by remember { mutableStateOf("") }   // user's current node label
     var isNavigating      by remember { mutableStateOf(false) }
     var currentInstruction by remember { mutableStateOf("") }
     var totalStepsWalked  by remember { mutableIntStateOf(0) }
@@ -144,9 +145,9 @@ fun NavigationScreen() {
         val first = maps.firstOrNull()
         if (first != null) {
             selectedMap    = first
-            availableNodes = first.mapData.nodes
-                .map { it.label }
-                .filter { it != "Start" }   // hide auto-start node from picker
+            availableNodes = first.mapData.nodes.map { it.label }
+            // Default start = first mapped node (the mapping start point)
+            startLocation  = availableNodes.firstOrNull() ?: ""
             hasMap = true
         }
     }
@@ -194,16 +195,17 @@ fun NavigationScreen() {
                 selectedMap    = selectedMap,
                 allMaps        = allMaps,
                 availableNodes = availableNodes,
+                startLocation  = startLocation,
                 destination    = destination,
                 isListening    = isListening,
                 voiceHint      = voiceHint,
                 bleConnected   = bleConnected,
+                onStartLocationChange = { startLocation = it },
                 onDestinationChange = { destination = it },
                 onMapSelected = { map ->
                     selectedMap    = map
-                    availableNodes = map.mapData.nodes
-                        .map { it.label }
-                        .filter { it != "Start" }
+                    availableNodes = map.mapData.nodes.map { it.label }
+                    startLocation  = availableNodes.firstOrNull() ?: ""
                     hasMap      = true
                     destination = ""  // reset destination when map changes
                 },
@@ -230,19 +232,32 @@ fun NavigationScreen() {
                     coroutineScope.launch {
                         val map = selectedMap ?: return@launch
                         engine.loadMap(map.mapData)
-                        val start = map.mapData.nodes.firstOrNull()
-                        val end   = map.mapData.nodes.find {
-                            it.label.contains(destination, ignoreCase = true)
-                        } ?: map.mapData.nodes.lastOrNull()
 
-                        if (start != null && end != null && start.id != end.id) {
-                            val summary = engine.startNavigation(start.id, end.id)
-                            if (summary != null) {
-                                currentInstruction = "Starting navigation…"
-                                isNavigating = true
-                            }
-                        } else {
+                        val start = map.mapData.nodes.find {
+                            it.label.equals(startLocation, ignoreCase = true)
+                        } ?: map.mapData.nodes.firstOrNull()
+
+                        val end = map.mapData.nodes.find {
+                            it.label.contains(destination, ignoreCase = true)
+                        }
+
+                        if (start == null || end == null) {
                             voiceHint = "Could not find that destination. Try again."
+                            vibratePhone(context, HapticType.ERROR)
+                            return@launch
+                        }
+                        if (start.id == end.id) {
+                            voiceHint = "You are already there!"
+                            vibratePhone(context, HapticType.CONFIRM)
+                            return@launch
+                        }
+
+                        val summary = engine.startNavigation(start.id, end.id)
+                        if (summary != null) {
+                            currentInstruction = "Starting navigation…"
+                            isNavigating = true
+                        } else {
+                            voiceHint = "No route found. Check your start and destination."
                             vibratePhone(context, HapticType.ERROR)
                         }
                     }
@@ -260,6 +275,9 @@ fun NavigationScreen() {
                     totalStepsWalked   = 0
                     totalDistWalked    = 0f
                     prevEdgeDist       = 0f
+                    startLocation  = ""
+                    availableNodes = selectedMap?.mapData?.nodes?.map { it.label } ?: emptyList()
+                    startLocation  = availableNodes.firstOrNull() ?: ""
                     vibratePhone(context, HapticType.TAP)
                 }
             )
@@ -277,10 +295,12 @@ private fun PreNavigationView(
     selectedMap: CachedMapEntity?,
     allMaps: List<CachedMapEntity>,
     availableNodes: List<String>,
+    startLocation: String,
     destination: String,
     isListening: Boolean,
     voiceHint: String,
     bleConnected: Boolean,
+    onStartLocationChange: (String) -> Unit,
     onDestinationChange: (String) -> Unit,
     onMapSelected: (CachedMapEntity) -> Unit,
     onVoiceStart: () -> Unit,
@@ -457,11 +477,49 @@ private fun PreNavigationView(
             )
         )
 
-        // ── Quick-pick chips ─────────────────────────────────────
+        // ── "Where are you now?" chip row ───────────────────────
         if (availableNodes.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             Text(
-                "Quick pick:",
+                "📍 Where are you now?",
+                style    = MaterialTheme.typography.labelMedium,
+                color    = SlateText,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+            Spacer(Modifier.height(6.dp))
+            LazyRow(
+                contentPadding        = PaddingValues(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(availableNodes) { label ->
+                    val isSelected = startLocation == label
+                    Surface(
+                        onClick  = { onStartLocationChange(label) },
+                        shape    = RoundedCornerShape(20.dp),
+                        color    = if (isSelected) SuccessGreen else NavyCard,
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Box(
+                            modifier         = Modifier.padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected) Color.White else SlateText
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Destination quick-pick chips ─────────────────────────
+        val destinationNodes = availableNodes.filter { it != startLocation }
+        if (destinationNodes.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "🏁 Go to:",
                 style    = MaterialTheme.typography.labelMedium,
                 color    = SlateText,
                 modifier = Modifier.padding(horizontal = 24.dp)
@@ -471,7 +529,7 @@ private fun PreNavigationView(
                 contentPadding      = PaddingValues(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(availableNodes) { label ->
+                items(destinationNodes) { label ->
                     val isSelected = destination == label
                     Surface(
                         onClick  = {

@@ -1,6 +1,7 @@
 package com.crowdpath.app.ui.settings
 
 import android.content.Context
+import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.crowdpath.app.data.database.AppDatabase
  import com.crowdpath.app.navigation.PDRTracker
 import com.crowdpath.app.ui.theme.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val PREFS                = "crowdpath_settings"
@@ -54,7 +56,14 @@ fun SettingsScreen() {
     var calibSteps        by remember { mutableIntStateOf(0) }
     var calibDistInput    by remember { mutableFloatStateOf(14f) }  // default 20×0.7
     var calibPhase        by remember { mutableIntStateOf(0) }      // 0=walk, 1=enter dist
-
+    var calibCountdown    by remember { mutableIntStateOf(0) }      // 3…2…1 before counting
+    // TTS for calibration announcements (lightweight, separate from NavigationEngine)
+    val calibTts = remember {
+        var tts: TextToSpeech? = null
+        tts = TextToSpeech(context) { /* init */ }
+        tts
+    }
+    DisposableEffect(Unit) { onDispose { calibTts.shutdown() } }
 
     Column(
         modifier = Modifier
@@ -345,20 +354,59 @@ fun SettingsScreen() {
                             }
                             Spacer(Modifier.height(12.dp))
                             if (!calibRunning) {
-                                Button(
-                                    onClick = {
-                                        calibSteps = 0; calibRunning = true
-                                        calibPdr.onStep = { steps, _ ->
-                                            calibSteps = steps
-                                            if (steps >= 20) {
-                                                calibPdr.stop(); calibRunning = false; calibPhase = 1
+                                if (calibCountdown > 0) {
+                                    // Countdown in progress — show count
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(AmberWarning.copy(alpha = 0.15f))
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "Starting in $calibCountdown…",
+                                            fontSize   = 22.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color      = AmberWarning
+                                        )
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            calibSteps    = 0
+                                            calibCountdown = 3
+                                            coroutineScope.launch {
+                                                // 3-second countdown with voice
+                                                for (n in 3 downTo 1) {
+                                                    calibCountdown = n
+                                                    calibTts.speak("$n", TextToSpeech.QUEUE_FLUSH, null, null)
+                                                    delay(1000L)
+                                                }
+                                                calibCountdown = 0
+                                                calibTts.speak("Walk now", TextToSpeech.QUEUE_FLUSH, null, null)
+                                                // Start PDR after countdown
+                                                calibRunning = true
+                                                calibPdr.onStep = { steps, _ ->
+                                                    calibSteps = steps
+                                                    if (steps >= 20) {
+                                                        calibPdr.stop()
+                                                        calibRunning = false
+                                                        calibPhase = 1
+                                                        calibTts.speak(
+                                                            "20 steps counted. Now enter the distance you walked.",
+                                                            TextToSpeech.QUEUE_FLUSH, null, null
+                                                        )
+                                                    }
+                                                }
+                                                calibPdr.resetSteps()
+                                                calibPdr.start()
                                             }
-                                        }
-                                        calibPdr.resetSteps(); calibPdr.start()
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors   = ButtonDefaults.buttonColors(containerColor = CyanAccent)
-                                ) { Text("Start Walking", color = Color.White, fontWeight = FontWeight.Bold) }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors   = ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                                    ) { Text("Start Walking", color = Color.White, fontWeight = FontWeight.Bold) }
+                                }
                             } else {
                                 Text("Walking… $calibSteps / 20 steps counted",
                                     style = MaterialTheme.typography.bodySmall, color = CyanAccent)
@@ -397,6 +445,11 @@ fun SettingsScreen() {
                                 val computed = calibDistInput / calibSteps
                                 stepLength = computed
                                 prefs.edit().putFloat(KEY_STEP_LENGTH, computed).apply()
+                                // Announce completion via TTS so the user knows even with phone in pocket
+                                calibTts.speak(
+                                    "Step calibration done. Your step length is ${"%,.2f".format(computed)} meters.",
+                                    TextToSpeech.QUEUE_FLUSH, null, null
+                                )
                                 showCalibDialog = false
                             }
                         },

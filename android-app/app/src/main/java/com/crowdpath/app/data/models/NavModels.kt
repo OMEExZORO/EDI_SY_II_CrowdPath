@@ -28,6 +28,17 @@ enum class TurnDirection {
     SHARP_RIGHT   // ~150° turn right
 }
 
+/** Mirror a turn direction for reverse traversal (B→A instead of A→B). */
+fun TurnDirection.inverted(): TurnDirection = when (this) {
+    TurnDirection.SHARP_LEFT   -> TurnDirection.SHARP_RIGHT
+    TurnDirection.LEFT         -> TurnDirection.RIGHT
+    TurnDirection.SLIGHT_LEFT  -> TurnDirection.SLIGHT_RIGHT
+    TurnDirection.STRAIGHT     -> TurnDirection.STRAIGHT
+    TurnDirection.SLIGHT_RIGHT -> TurnDirection.SLIGHT_LEFT
+    TurnDirection.RIGHT        -> TurnDirection.LEFT
+    TurnDirection.SHARP_RIGHT  -> TurnDirection.SHARP_LEFT
+}
+
 // ── Core Data Classes ──────────────────────────────────────────────────────
 
 data class Pose3D(
@@ -80,7 +91,10 @@ data class Edge(
     val heading: Float,
     val attributes: EdgeAttributes = EdgeAttributes(),
     /** Volunteer-specified turn direction. When set, overrides compass inference. */
-    @SerializedName("explicit_turn") val explicitTurnDirection: TurnDirection? = null
+    @SerializedName("explicit_turn") val explicitTurnDirection: TurnDirection? = null,
+    /** True for synthetic reverse edges created by PathPlanner for bidirectional traversal.
+     *  Not serialized — always false in JSON from backend. */
+    @Transient val isReversed: Boolean = false
 )
 
 data class BuildingMapData(
