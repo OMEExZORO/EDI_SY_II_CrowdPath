@@ -126,7 +126,7 @@ class CaneServerCallbacks : public BLEServerCallbacks {
 
 class CommandCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* c) override {
-        std::string val = c->getValue();
+        String val = c->getValue();
         if (val.length() > 0) {
             parse_command((const uint8_t*)val.c_str(), val.length());
         }
