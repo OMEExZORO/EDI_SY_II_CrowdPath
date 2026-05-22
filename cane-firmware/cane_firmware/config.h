@@ -19,7 +19,9 @@
 #define PIN_BATTERY_ADC      34   // Battery ADC (optional — reads voltage divider)
 
 // ── Thresholds ───────────────────────────────────────────────────────────────
-#define OBSTACLE_THRESHOLD_CM  40   // Below this → trigger Pattern 6
+#define OBSTACLE_THRESHOLD_CM  60   // Below this → trigger Pattern 6
+                                    // 60cm = ~0.5s reaction at walking pace
+                                    // (was 40cm — too short, only 0.33s to react)
 
 // ── Pattern IDs (mirror VibrationPatterns.kt) ────────────────────────────────
 #define PATTERN_TURN_LEFT      1

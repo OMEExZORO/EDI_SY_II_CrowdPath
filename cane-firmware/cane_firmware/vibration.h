@@ -50,8 +50,10 @@ void vibration_fire(int pattern) {
             pulse(300, 0, 1);
             break;
 
-        case 4:  // Stairs Ahead — 4 slow pulses (rhythmic caution)
-            pulse(150, 350, 4);
+        case 4:  // Stairs Ahead — 4 rhythmic pulses
+            // Was 150+350=500ms×4=2000ms (too long, blocked ultrasonic reads)
+            // Now 150+50=200ms×4=800ms — still feels distinct, doesn't freeze loop
+            pulse(150, 50, 4);
             break;
 
         case 5:  // Arrived — 1 long celebratory buzz
