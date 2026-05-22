@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrowdPath Admin Portal</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+    body { background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+    /* Login Screen */
+    #login-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh;
+    }
+    .login-card {
+      background: #1e293b; border-radius: 12px; padding: 40px;
+      width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .login-card h1 { font-size: 22px; margin-bottom: 8px; color: #38bdf8; }
+    .login-card p { font-size: 13px; color: #94a3b8; margin-bottom: 28px; }
+    label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+    input[type="text"], input[type="password"], input[type="date"],
+    select, textarea {
+      width: 100%; padding: 10px 14px; border-radius: 8px;
+      border: 1px solid #334155; background: #0f172a; color: #e2e8f0;
+      font-size: 14px; margin-bottom: 16px; outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #38bdf8; }
+    button {
+      width: 100%; padding: 12px; border-radius: 8px; border: none;
+      background: #0284c7; color: white; font-size: 15px;
+      font-weight: 600; cursor: pointer; transition: background 0.2s;
+    }
+    button:hover { background: #0369a1; }
+    button.danger { background: #dc2626; }
+    button.danger:hover { background: #b91c1c; }
+    button.secondary { background: #334155; }
+    button.secondary:hover { background: #475569; }
+    .error { color: #f87171; font-size: 13px; margin-top: 10px; }
+
+    /* Dashboard */
+    #dashboard { display: none; }
+    .topbar {
+      background: #1e293b; padding: 16px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #334155;
+    }
+    .topbar h2 { font-size: 18px; color: #38bdf8; }
+    .topbar span { font-size: 13px; color: #94a3b8; }
+    .topbar button { width: auto; padding: 8px 20px; font-size: 13px; }
+    .content { padding: 32px; max-width: 900px; margin: 0 auto; }
+    .section-title {
+      font-size: 16px; font-weight: 600; color: #cbd5e1;
+      margin-bottom: 16px; padding-bottom: 8px;
+      border-bottom: 1px solid #334155;
+    }
+    .card {
+      background: #1e293b; border-radius: 10px; padding: 24px;
+      margin-bottom: 24px;
+    }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .date-range-fields { display: none; }
+    .block-list { list-style: none; }
+    .block-item {
+      background: #0f172a; border-radius: 8px; padding: 14px 16px;
+      margin-bottom: 10px; display: flex;
+      align-items: center; justify-content: space-between;
+    }
+    .block-item .info { flex: 1; }
+    .block-item .info strong { font-size: 14px; color: #e2e8f0; }
+    .block-item .info span { font-size: 12px; color: #94a3b8; display: block; }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 99px;
+      font-size: 11px; font-weight: 600; margin-left: 8px;
+    }
+    .badge.active { background: #dc2626; color: white; }
+    .badge.inactive { background: #334155; color: #94a3b8; }
+    .badge.today { background: #d97706; color: white; }
+    .badge.range { background: #0284c7; color: white; }
+    .badge.indefinite { background: #7c3aed; color: white; }
+    .unblock-btn { width: auto; padding: 6px 14px; font-size: 12px; }
+    .empty { color: #475569; font-size: 14px; text-align: center; padding: 20px 0; }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>CrowdPath</h1>
+    <p>Admin Portal — Building Access Management</p>
+    <label>Username</label>
+    <input type="text" id="username" placeholder="admin username">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="admin password">
+    <button onclick="doLogin()">Sign In</button>
+    <div class="error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="topbar">
+    <h2>🏛️ CrowdPath Admin Portal</h2>
+    <div style="display:flex;gap:12px;align-items:center;">
+      <span id="admin-name"></span>
+      <button class="secondary" onclick="logout()" style="width:auto;padding:8px 16px;">Logout</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- Block a path -->
+    <div class="card">
+      <div class="section-title">🚧 Block a Path</div>
+      <label>Building ID</label>
+      <input type="text" id="b-building" placeholder="e.g. vit_main_building">
+      <label>Edge / Path ID</label>
+      <input type="text" id="b-edge" placeholder="e.g. edge_corridor_a_1470">
+      <label>Reason</label>
+      <textarea id="b-reason" rows="2" placeholder="e.g. Corridor blocked for renovation"></textarea>
+      <label>Block Type</label>
+      <select id="b-type" onchange="onTypeChange()">
+        <option value="TODAY">Today Only</option>
+        <option value="DATE_RANGE">Date Range</option>
+        <option value="INDEFINITE">Indefinite (until I unblock it)</option>
+      </select>
+      <div class="date-range-fields form-row" id="date-range-fields">
+        <div>
+          <label>From Date</label>
+          <input type="date" id="b-from">
+        </div>
+        <div>
+          <label>Until Date</label>
+          <input type="date" id="b-until">
+        </div>
+      </div>
+      <button onclick="createBlock()">Block This Path</button>
+      <div class="error" id="block-error"></div>
+    </div>
+
+    <!-- View active blocks -->
+    <div class="card">
+      <div class="section-title">📋 View & Manage Blocks</div>
+      <div class="form-row">
+        <div>
+          <label>Building ID</label>
+          <input type="text" id="v-building" placeholder="e.g. vit_main_building">
+        </div>
+        <div style="display:flex;align-items:flex-end;margin-bottom:16px;">
+          <button onclick="loadBlocks()" style="width:100%;">Load Blocks</button>
+        </div>
+      </div>
+      <ul class="block-list" id="block-list">
+        <li class="empty">Enter a building ID and click Load Blocks.</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const API = '';
+  let authToken = localStorage.getItem('cp_admin_token') || null;
+
+  window.onload = () => {
+    if (authToken) showDashboard();
+  };
+
+  async function doLogin() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    document.getElementById('login-error').textContent = '';
+
+    try {
+      const res = await fetch(`${API}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        document.getElementById('login-error').textContent = err.detail;
+        return;
+      }
+      const data = await res.json();
+      authToken = data.token;
+      localStorage.setItem('cp_admin_token', authToken);
+      showDashboard(username);
+    } catch (e) {
+      document.getElementById('login-error').textContent = 'Connection failed.';
+    }
+  }
+
+  function showDashboard(name) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('admin-name').textContent = `Logged in as ${name || 'admin'}`;
+  }
+
+  function logout() {
+    authToken = null;
+    localStorage.removeItem('cp_admin_token');
+    location.reload();
+  }
+
+  function onTypeChange() {
+    const type = document.getElementById('b-type').value;
+    document.getElementById('date-range-fields').style.display =
+      type === 'DATE_RANGE' ? 'grid' : 'none';
+  }
+
+  async function createBlock() {
+    const building = document.getElementById('b-building').value.trim();
+    const edge = document.getElementById('b-edge').value.trim();
+    const reason = document.getElementById('b-reason').value.trim();
+    const type = document.getElementById('b-type').value;
+    document.getElementById('block-error').textContent = '';
+
+    if (!building || !edge || !reason) {
+      document.getElementById('block-error').textContent = 'All fields required.';
+      return;
+    }
+
+    const payload = { building_id: building, edge_id: edge, reason, block_type: type };
+
+    if (type === 'DATE_RANGE') {
+      payload.blocked_from = document.getElementById('b-from').value;
+      payload.blocked_until = document.getElementById('b-until').value;
+      if (!payload.blocked_from || !payload.blocked_until) {
+        document.getElementById('block-error').textContent = 'Both dates required for date range.';
+        return;
+      }
+    }
+
+    try {
+      const res = await fetch(`${API}/api/admin/blocks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        document.getElementById('block-error').textContent = err.detail;
+        return;
+      }
+      alert('Path blocked successfully. The Android app will reroute automatically on next navigation.');
+      document.getElementById('b-reason').value = '';
+    } catch (e) {
+      document.getElementById('block-error').textContent = 'Failed to create block.';
+    }
+  }
+
+  async function loadBlocks() {
+    const building = document.getElementById('v-building').value.trim();
+    if (!building) return;
+
+    const res = await fetch(`${API}/api/admin/blocks/${building}`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    const data = await res.json();
+    const list = document.getElementById('block-list');
+
+    if (!data.blocks || data.blocks.length === 0) {
+      list.innerHTML = '<li class="empty">No blocks found for this building.</li>';
+      return;
+    }
+
+    list.innerHTML = data.blocks.map(b => {
+      const activeBadge = b.currently_active
+        ? '<span class="badge active">ACTIVE NOW</span>'
+        : '<span class="badge inactive">INACTIVE</span>';
+      const typeBadge = {
+        TODAY: '<span class="badge today">TODAY</span>',
+        DATE_RANGE: '<span class="badge range">DATE RANGE</span>',
+        INDEFINITE: '<span class="badge indefinite">INDEFINITE</span>'
+      }[b.block_type] || '';
+      const dateInfo = b.block_type === 'TODAY'
+        ? b.blocked_from
+        : b.block_type === 'DATE_RANGE'
+        ? `${b.blocked_from} → ${b.blocked_until}`
+        : `From ${b.blocked_from} onwards`;
+
+      return `
+        <li class="block-item">
+          <div class="info">
+            <strong>Edge: ${b.edge_id} ${activeBadge} ${typeBadge}</strong>
+            <span>${b.reason}</span>
+            <span>📅 ${dateInfo} &nbsp;|&nbsp; Created by ${b.created_by}</span>
+          </div>
+          ${b.currently_active ? `<button class="danger unblock-btn" onclick="unblock('${b.block_id}')">Unblock</button>` : ''}
+        </li>`;
+    }).join('');
+  }
+
+  async function unblock(blockId) {
+    if (!confirm('Remove this block? The path will be immediately accessible again.')) return;
+    const res = await fetch(`${API}/api/admin/blocks/${blockId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    if (res.ok) {
+      alert('Block removed. Path is now open.');
+      loadBlocks();
+    }
+  }
+</script>
+</body>
+</html>

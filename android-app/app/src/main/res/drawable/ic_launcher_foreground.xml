@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Walking cane icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 C54,28.9 54.9,28 56,28 L56,28 C57.1,28 58,28.9 58,30 L58,65 C58,65 62,72 62,75 C62,78.3 59.3,81 56,81 C52.7,81 50,78.3 50,75 C50,72 54,65 54,65 Z"/>
+    <!-- Navigation arrow -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,40 L54,25 L64,40 L58,40 L58,50 L50,50 L50,40 Z"
+        android:fillAlpha="0.6"/>
+</vector>

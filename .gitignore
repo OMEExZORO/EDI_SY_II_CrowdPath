@@ -1,0 +1,51 @@
+# ── Android build artifacts ───────────────────────────────────────────────────
+android-app/.gradle/
+android-app/app/build/
+android-app/build/
+cane-emulator/.gradle/
+cane-emulator/app/build/
+cane-emulator/build/
+android-app/local.properties
+android-app/.idea/
+
+# ── Scratch / test Android sub-projects (not production code) ────────────────
+android-app/EDI/
+android-app/helloworld/
+
+# ── Local properties (machine-specific SDK paths) ────────────────────────────
+**/local.properties
+
+# ── SQLite database files (runtime data, not source) ─────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+android-app/**/*.iml
+android-app/**/google-services.json
+
+# ── Python virtual environment ────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+*.egg
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
+.idea/
+untitled/
+*.DS_Store
+Thumbs.db
+.vscode/
+
+# ── Docs, LaTeX, Word papers (not source code) ───────────────────────────────
+docs/
+EDI_Research_Paper_SEM_I.docx
+
+# ── Demo recordings / screenshots (binary, too large) ────────────────────────
+demo/
+
+# ── Misc temp ────────────────────────────────────────────────────────────────
+demo_test.py
+*.log
+*.tmp
