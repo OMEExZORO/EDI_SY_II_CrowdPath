@@ -1,65 +1,62 @@
 /**
- * CrowdPath Smart Cane — ESP32 Firmware
- * ======================================
- * BLE GATT Server that:
- *  - Advertises as "SmartCane-ESP32"
- *  - Receives vibration/nav commands from the Android app
- *  - Reads HC-SR04 ultrasonic distance every 500ms
- *  - Auto-triggers Pattern 6 (STOP) when obstacle < 40cm
- *  - Sends status JSON (battery_v, ultra_cm) every 2s via BLE notify
- *  - Accepts Serial debug commands: v1..v6, ping
+ * CrowdPath Smart Cane — ESP8266 Firmware (WiFi/UDP mode)
+ * =========================================================
+ * Creates a WiFi hotspot "SmartCane" (pass: crowdpath).
+ * Phone connects to this hotspot, then app sends/receives UDP.
  *
- * UUIDs match BLEProtocol.kt in the Android app exactly.
+ * Pin Map (NodeMCU ESP8266):
+ *   D5 (GPIO14) → HC-SR04 TRIG
+ *   D6 (GPIO12) → HC-SR04 ECHO (3.3V safe)
+ *   D7 (GPIO13) → Vibration motor / buzzer SIG
+ *   D3 (GPIO0)  → Push button (onboard pull-up)
+ *   A0          → Battery ADC (optional voltage divider)
  *
- * GPIO Map:
- *   GPIO 5  → HC-SR04 TRIG
- *   GPIO 18 → HC-SR04 ECHO (via 1kΩ+2kΩ voltage divider for 3.3V safety)
- *   GPIO 25 → Vibration motor module SIG
- *   GPIO 32 → Push button (10kΩ pull-down to GND)
- *   GPIO 34 → Battery voltage ADC (optional: connect via 2:1 voltage divider)
+ * Board to select in Arduino IDE:
+ *   Tools → Board → ESP8266 Boards → NodeMCU 1.0 (ESP-12E Module)
+ *   Upload Speed: 115200
+ *   Flash Size: 4MB (FS:2MB OTA:1MB)
  */
 
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
-// ArduinoJson removed — JSON handled with plain sprintf/strstr in ble_server.h
+#include <Arduino.h>
+// WiFi and UDP — all built into ESP8266 board package, no external library needed
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
 
 // ── Module includes ──────────────────────────────────────────────────────────
 #include "config.h"
 #include "vibration.h"
 #include "ultrasonic.h"
-#include "ble_server.h"
+#include "wifi_server.h"   // replaces ble_server.h
 
 // ── Timing ───────────────────────────────────────────────────────────────────
-static unsigned long lastStatusMs   = 0;
-static unsigned long lastUltraMs    = 0;
-static unsigned long lastButtonMs   = 0;
+static unsigned long lastStatusMs  = 0;
+static unsigned long lastUltraMs   = 0;
+static unsigned long lastButtonMs  = 0;
 
-static const unsigned long STATUS_INTERVAL_MS   = 2000;
-static const unsigned long ULTRA_INTERVAL_MS    = 500;
-static const unsigned long BUTTON_DEBOUNCE_MS   = 50;
+static const unsigned long STATUS_INTERVAL_MS  = 2000;
+static const unsigned long ULTRA_INTERVAL_MS   = 500;
+static const unsigned long BUTTON_DEBOUNCE_MS  = 50;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-static int  currentUltraCm       = 999;
-static bool lastObstacleState    = false;
-static bool buttonPressed        = false;
+static int  currentUltraCm    = 999;
+static bool lastObstacleState = false;
+static bool buttonPressed     = false;
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
-    Serial.println(F("\n=== CrowdPath Smart Cane Firmware ==="));
+    Serial.println(F("\n=== CrowdPath Smart Cane — ESP8266 WiFi Mode ==="));
 
     vibration_init();
     ultrasonic_init();
-    ble_init();
+    wifi_init();   // starts hotspot + UDP listener
 
-    pinMode(PIN_BUTTON, INPUT);  // external 10kΩ pull-down
+    pinMode(PIN_BUTTON, INPUT);   // D3 has onboard pull-up on NodeMCU
 
-    Serial.println(F("Ready. BLE advertising as: " DEVICE_NAME));
+    Serial.println(F("Ready. Connect phone to WiFi: SmartCane / crowdpath"));
     Serial.println(F("Serial commands: v1..v6 (patterns), ping (ultrasonic)"));
 
-    // Startup confirmation — fire pattern 5 briefly (arrived tone)
+    // Startup confirmation — pattern 5 (arrived buzz)
     vibration_fire(5);
 }
 
@@ -67,64 +64,60 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    // 1. Read ultrasonic every 500ms
+    // 1. Process incoming UDP commands from phone
+    wifi_process_incoming();
+
+    // 2. Read ultrasonic every 500ms
     if (now - lastUltraMs >= ULTRA_INTERVAL_MS) {
         lastUltraMs = now;
         currentUltraCm = ultrasonic_read_cm();
 
-        // Auto-trigger obstacle pattern when < OBSTACLE_THRESHOLD_CM
         bool obstacleNow = (currentUltraCm > 0 && currentUltraCm < OBSTACLE_THRESHOLD_CM);
         if (obstacleNow && !lastObstacleState) {
-            Serial.printf("[OBSTACLE] Distance: %d cm — firing Pattern 6\n", currentUltraCm);
+            Serial.printf("[OBSTACLE] %d cm — firing Pattern 6\n", currentUltraCm);
             vibration_fire(PATTERN_STOP_OBSTACLE);
         }
         lastObstacleState = obstacleNow;
     }
 
-    // 2. Send BLE status every 2s (only if device connected)
+    // 3. Send status to phone every 2s
     if (now - lastStatusMs >= STATUS_INTERVAL_MS) {
         lastStatusMs = now;
-        ble_send_status(currentUltraCm);
+        wifi_send_status(currentUltraCm);
     }
 
-    // 3. Push button — emergency stop (pattern 6) with debounce
-    bool btnState = digitalRead(PIN_BUTTON) == HIGH;
+    // 4. Push button — emergency stop
+    bool btnState = digitalRead(PIN_BUTTON) == LOW;  // LOW = pressed (pull-up)
     if (btnState && !buttonPressed && (now - lastButtonMs > BUTTON_DEBOUNCE_MS)) {
-        lastButtonMs = now;
+        lastButtonMs  = now;
         buttonPressed = true;
-        Serial.println(F("[BUTTON] Emergency stop triggered"));
+        Serial.println(F("[BUTTON] Emergency stop"));
         vibration_fire(PATTERN_STOP_OBSTACLE);
     }
     if (!btnState) buttonPressed = false;
 
-    // 4. Serial debug commands
+    // 5. Execute any pending vibration command
+    wifi_process_pending();
+
+    // 6. Serial debug commands
     if (Serial.available()) {
         String cmd = Serial.readStringUntil('\n');
         cmd.trim();
-        handle_serial_command(cmd);
-    }
-
-    // 5. Process any pending BLE vibration command (set by callback)
-    ble_process_pending();
-
-    delay(10);  // yield
-}
-
-// ── Serial debug handler ──────────────────────────────────────────────────────
-void handle_serial_command(const String& cmd) {
-    if (cmd == "ping") {
-        int d = ultrasonic_read_cm();
-        Serial.printf("[PING] Distance: %d cm\n", d);
-    } else if (cmd.startsWith("v") && cmd.length() == 2) {
-        int p = cmd.substring(1).toInt();
-        if (p >= 1 && p <= 6) {
-            Serial.printf("[SERIAL] Firing pattern %d\n", p);
-            vibration_fire(p);
-        } else {
-            Serial.println(F("[SERIAL] Invalid pattern. Use v1..v6"));
+        if (cmd == "ping") {
+            int d = ultrasonic_read_cm();
+            Serial.printf("[PING] Distance: %d cm\n", d);
+        } else if (cmd.startsWith("v") && cmd.length() == 2) {
+            int p = cmd.substring(1).toInt();
+            if (p >= 1 && p <= 6) {
+                Serial.printf("[SERIAL] Firing pattern %d\n", p);
+                vibration_fire(p);
+            }
+        } else if (cmd == "ip") {
+            Serial.printf("[INFO] AP IP: %s  Clients: %d\n",
+                WiFi.softAPIP().toString().c_str(),
+                WiFi.softAPStationNum());
         }
-    } else {
-        Serial.printf("[SERIAL] Unknown command: %s\n", cmd.c_str());
-        Serial.println(F("Commands: v1..v6, ping"));
     }
+
+    delay(10);
 }
