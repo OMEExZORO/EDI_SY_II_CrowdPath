@@ -20,16 +20,22 @@ object BLEProtocol {
     const val DEVICE_NAME_PREFIX = "SmartCane"
 
     /**
-     * Serialise a navigation command to JSON bytes.
+     * Serialise a navigation command to JSON bytes (BLE transport).
      */
     fun encodeNavCommand(cmd: CaneNavCommand): ByteArray =
         gson.toJson(cmd).toByteArray(Charsets.UTF_8)
 
     /**
-     * Serialise a vibration command to JSON bytes.
+     * Serialise a vibration command to JSON bytes (BLE transport).
      */
     fun encodeVibeCommand(cmd: CaneVibeCommand): ByteArray =
         gson.toJson(cmd).toByteArray(Charsets.UTF_8)
+
+    /** Serialise a navigation command to a JSON string (UDP transport). */
+    fun encodeNavCommandAsString(cmd: CaneNavCommand): String = gson.toJson(cmd)
+
+    /** Serialise a vibration command to a JSON string (UDP transport). */
+    fun encodeVibeCommandAsString(cmd: CaneVibeCommand): String = gson.toJson(cmd)
 
     /**
      * Decode a status JSON from the cane.

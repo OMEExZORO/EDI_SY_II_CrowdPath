@@ -50,6 +50,8 @@ import com.crowdpath.app.data.database.AppDatabase
 import com.crowdpath.app.data.database.CachedMapEntity
 import com.crowdpath.app.data.repository.MapRepository
 import com.crowdpath.app.navigation.NavigationEngine
+import com.crowdpath.app.ble.CaneClient
+import com.crowdpath.app.ble.CaneUdpClient
 import com.crowdpath.app.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
@@ -119,9 +121,21 @@ enum class HapticType {
 fun NavigationScreen() {
     val context        = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val engine         = remember { NavigationEngine(context) }
-    val db             = remember { AppDatabase.getInstance(context) }
-    val repo           = remember { MapRepository(db) }
+
+    // Pick cane transport: WiFi/UDP (ESP8266) or BLE (ESP32) based on Settings toggle
+    val prefs       = remember { context.getSharedPreferences("crowdpath_settings", android.content.Context.MODE_PRIVATE) }
+    val useWifiCane = remember { prefs.getBoolean("cane_use_wifi", true) }
+    val caneClient  = remember {
+        if (useWifiCane) null else CaneClient(context).also { it.startScan() }
+    }
+    val caneUdpClient = remember {
+        if (useWifiCane) CaneUdpClient(context).also { it.startScan() } else null
+    }
+    // NavigationEngine accepts CaneClient? — for WiFi mode we pass null to engine
+    // and drive caneUdpClient directly through the same callbacks below
+    val engine      = remember { NavigationEngine(context, caneClient) }
+    val db          = remember { AppDatabase.getInstance(context) }
+    val repo        = remember { MapRepository(db) }
 
     var destination       by remember { mutableStateOf("") }
     var startLocation     by remember { mutableStateOf("") }   // user's current node label

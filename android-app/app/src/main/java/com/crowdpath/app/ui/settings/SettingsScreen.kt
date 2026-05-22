@@ -34,6 +34,7 @@ private const val KEY_STEP_LENGTH      = "step_length"
 private const val KEY_ACCESSIBLE_ONLY  = "accessible_only"
 private const val KEY_VIBRATION        = "vibration_enabled"
 private const val KEY_PHOTO_CONSENT    = "photo_consent"
+private const val KEY_CANE_WIFI        = "cane_use_wifi"  // true=ESP8266 WiFi, false=ESP32 BLE
 
 @Composable
 fun SettingsScreen() {
@@ -47,6 +48,8 @@ fun SettingsScreen() {
     var accessibleOnly    by remember { mutableStateOf(prefs.getBoolean(KEY_ACCESSIBLE_ONLY, false)) }
     var vibrationEnabled  by remember { mutableStateOf(prefs.getBoolean(KEY_VIBRATION, true)) }
     var photoConsent      by remember { mutableStateOf(prefs.getBoolean(KEY_PHOTO_CONSENT, false)) }
+    // true = use ESP8266 WiFi/UDP cane, false = use ESP32 BLE cane
+    var useWifiCane       by remember { mutableStateOf(prefs.getBoolean(KEY_CANE_WIFI, true)) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     // ── Step calibration state ─────────────────────────────────────────────
@@ -230,6 +233,21 @@ fun SettingsScreen() {
             )
             Divider(color = Color(0xFF1E293B), modifier = Modifier.padding(vertical = 8.dp))
             PremiumToggle(
+                icon           = Icons.Default.Wifi,
+                title          = "Smart Cane: WiFi Mode",
+                subtitle       = if (useWifiCane)
+                    "ESP8266 — connect phone to 'SmartCane' WiFi first"
+                else
+                    "ESP32 BLE — cane connects automatically via Bluetooth",
+                checked        = useWifiCane,
+                onCheckedChange = {
+                    useWifiCane = it
+                    prefs.edit().putBoolean(KEY_CANE_WIFI, it).apply()
+                },
+                accentColor    = Color(0xFF0EA5E9)
+            )
+            Divider(color = Color(0xFF1E293B), modifier = Modifier.padding(vertical = 8.dp))
+            PremiumToggle(
                 icon           = Icons.Default.CameraAlt,
                 title          = "Photo Consent",
                 subtitle       = "Allow photo upload during mapping sessions",
@@ -240,6 +258,7 @@ fun SettingsScreen() {
                 },
                 accentColor    = CyanAccent
             )
+
         }
 
         // ── App info ───────────────────────────────────────────────
